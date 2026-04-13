@@ -1,59 +1,140 @@
-export interface SessionRecord {
+import type { Session, User } from '@prisma/client';
+
+import { prisma } from '../db/prismaClient';
+
+export type SessionRole = 'guest' | 'learner' | 'instructor';
+
+export interface SessionContext {
   id: string;
+  userId?: string | undefined;
+  displayName: string;
+  role: SessionRole;
+  isGuest: boolean;
   createdAt: number;
   expiresAt: number;
 }
 
-interface SessionStore {
-  create(ttlSeconds: number): Promise<SessionRecord>;
-  validate(sessionId: string): Promise<boolean>;
-  clear(): void;
+interface CreateSessionInput {
+  role: SessionRole;
+  displayName: string;
+  userId?: string | undefined;
+  isGuest: boolean;
+  ttlSeconds?: number | undefined;
+  createdBy?: string | undefined;
+  userAgent?: string | undefined;
+  ipAddress?: string | undefined;
 }
 
-class InMemorySessionStore implements SessionStore {
-  private readonly sessions = new Map<string, SessionRecord>();
+interface LoginUserInput {
+  displayName: string;
+  role: Extract<SessionRole, 'learner' | 'instructor'>;
+}
 
-  async create(ttlSeconds: number): Promise<SessionRecord> {
-    const now = Date.now();
-    const record: SessionRecord = {
-      id: crypto.randomUUID(),
-      createdAt: now,
-      expiresAt: now + ttlSeconds * 1000,
-    };
-    this.sessions.set(record.id, record);
-    return record;
+function toSessionContext(record: Session & { user?: User | null }): SessionContext {
+  return {
+    id: record.id,
+    userId: record.userId ?? undefined,
+    displayName: record.displayName,
+    role: record.role as SessionRole,
+    isGuest: record.isGuest,
+    createdAt: record.createdAt.getTime(),
+    expiresAt: record.expiresAt.getTime(),
+  };
+}
+
+export async function createSession(input: CreateSessionInput): Promise<SessionContext> {
+  const now = Date.now();
+  const expiresAt = new Date(now + (input.ttlSeconds ?? 60 * 60 * 24 * 7) * 1000);
+  const record = await prisma.session.create({
+    data: {
+      role: input.role,
+      displayName: input.displayName,
+      isGuest: input.isGuest,
+      expiresAt,
+      ...(input.userId ? { userId: input.userId } : {}),
+      ...(input.createdBy ? { createdBy: input.createdBy } : {}),
+      ...(input.userAgent ? { userAgent: input.userAgent } : {}),
+      ...(input.ipAddress ? { ipAddress: input.ipAddress } : {}),
+    },
+  });
+
+  return toSessionContext(record);
+}
+
+export async function issueGuestSession(metadata?: {
+  userAgent?: string | undefined;
+  ipAddress?: string | undefined;
+}): Promise<SessionContext> {
+  return createSession({
+    role: 'guest',
+    displayName: 'Guest',
+    isGuest: true,
+    userAgent: metadata?.userAgent,
+    ipAddress: metadata?.ipAddress,
+  });
+}
+
+export async function issueUserSession(
+  input: LoginUserInput & {
+    userAgent?: string | undefined;
+    ipAddress?: string | undefined;
+  },
+): Promise<SessionContext> {
+  const normalizedName = input.displayName.trim();
+  const user = await prisma.user.upsert({
+    where: {
+      displayName_role: {
+        displayName: normalizedName,
+        role: input.role,
+      },
+    },
+    update: {
+      updatedAt: new Date(),
+    },
+    create: {
+      displayName: normalizedName,
+      role: input.role,
+    },
+  });
+
+  return createSession({
+    role: input.role,
+    displayName: user.displayName,
+    userId: user.id,
+    isGuest: false,
+    userAgent: input.userAgent,
+    ipAddress: input.ipAddress,
+  });
+}
+
+export async function validateSession(sessionId: string): Promise<SessionContext | null> {
+  const record = await prisma.session.findUnique({
+    where: { id: sessionId },
+  });
+
+  if (!record) {
+    return null;
   }
 
-  async validate(sessionId: string): Promise<boolean> {
-    const now = Date.now();
-    const record = this.sessions.get(sessionId);
-    if (!record) {
-      return false;
-    }
-
-    if (record.expiresAt <= now) {
-      this.sessions.delete(sessionId);
-      return false;
-    }
-
-    return true;
+  if (record.expiresAt.getTime() <= Date.now()) {
+    await prisma.session.delete({ where: { id: sessionId } }).catch(() => undefined);
+    return null;
   }
 
-  clear(): void {
-    this.sessions.clear();
-  }
+  return toSessionContext(record);
 }
 
-const sessionStore = new InMemorySessionStore();
-
-export async function createSession(ttlSeconds = 60 * 60): Promise<SessionRecord> {
-  return sessionStore.create(ttlSeconds);
+export async function revokeSession(sessionId: string): Promise<void> {
+  await prisma.session.delete({ where: { id: sessionId } }).catch(() => undefined);
 }
 
-export async function validateSession(sessionId: string): Promise<boolean> {
-  return sessionStore.validate(sessionId);
-}
-
-export function resetSessionStore(): void {
-  sessionStore.clear();
+export async function resetSessionStore(): Promise<void> {
+  await prisma.session.deleteMany();
+  await prisma.user.deleteMany({
+    where: {
+      role: {
+        in: ['learner', 'instructor'],
+      },
+    },
+  });
 }

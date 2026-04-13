@@ -21,35 +21,22 @@ const stepSchema = z.object({
   tip: z.string().optional(),
 });
 
-const createHistorySchema = z.object({
+const createTemplateSchema = z.object({
   scenarioKey: z.enum(['coffee', 'laundry', 'cooking']),
-  customName: z.string().trim().min(1).max(80).optional(),
+  title: z.string().trim().min(2).max(80),
+  description: z.string().trim().max(200).optional(),
+  classTag: z.string().trim().min(2).max(40).optional(),
   parameters: z.record(z.string(), z.unknown()),
   planSteps: z.array(stepSchema),
-  idempotencyKey: z.string().trim().min(8).max(120),
-  templateSourceId: z.string().trim().min(1).optional(),
 });
 
-export async function GET(request: Request): Promise<Response> {
-  const auth = await requireUserSession(request);
-  if (!auth.isAuthorized || !auth.session?.userId) {
-    return auth.response ?? NextResponse.json({ success: false }, { status: 403 });
-  }
-
-  const history = await prisma.practiceHistory.findMany({
-    where: {
-      userId: auth.session.userId,
-    },
-    orderBy: {
-      completedAt: 'desc',
-    },
-    take: 50,
-  });
-
-  return NextResponse.json({
-    success: true,
-    results: history,
-  });
+function slugify(value: string): string {
+  return value
+    .trim()
+    .toLowerCase()
+    .replace(/[^a-z0-9가-힣]+/g, '-')
+    .replace(/^-+|-+$/g, '')
+    .slice(0, 50);
 }
 
 export async function POST(request: Request): Promise<Response> {
@@ -65,38 +52,45 @@ export async function POST(request: Request): Promise<Response> {
     return NextResponse.json({ success: false, error: 'Invalid JSON' }, { status: 400 });
   }
 
-  const parsed = createHistorySchema.safeParse(rawBody);
+  const parsed = createTemplateSchema.safeParse(rawBody);
   if (!parsed.success) {
-    return NextResponse.json({ success: false, error: 'Invalid history payload' }, { status: 400 });
+    return NextResponse.json({ success: false, error: 'Invalid template payload' }, { status: 400 });
   }
 
-  const existing = await prisma.practiceHistory.findUnique({
-    where: {
-      idempotencyKey: parsed.data.idempotencyKey,
-    },
-  });
-  if (existing) {
-    return NextResponse.json({
-      success: true,
-      history: existing,
-      deduplicated: true,
+  let classTagId: string | undefined;
+  if (parsed.data.classTag) {
+    const classTag = await prisma.classTag.upsert({
+      where: {
+        slug: slugify(parsed.data.classTag),
+      },
+      update: {
+        label: parsed.data.classTag,
+      },
+      create: {
+        slug: slugify(parsed.data.classTag),
+        label: parsed.data.classTag,
+      },
     });
+    classTagId = classTag.id;
   }
 
-  const history = await prisma.practiceHistory.create({
+  const template = await prisma.lessonTemplate.create({
     data: {
       userId: auth.session.userId,
       scenarioKey: parsed.data.scenarioKey,
+      title: parsed.data.title,
       parameters: parsed.data.parameters as Prisma.InputJsonValue,
       planSteps: parsed.data.planSteps as Prisma.InputJsonValue,
-      idempotencyKey: parsed.data.idempotencyKey,
-      ...(parsed.data.customName ? { customName: parsed.data.customName } : {}),
-      ...(parsed.data.templateSourceId ? { templateSourceId: parsed.data.templateSourceId } : {}),
+      ...(parsed.data.description ? { description: parsed.data.description } : {}),
+      ...(classTagId ? { classTagId } : {}),
+    },
+    include: {
+      classTag: true,
     },
   });
 
   return NextResponse.json({
     success: true,
-    history,
+    template,
   });
 }

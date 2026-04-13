@@ -29,6 +29,13 @@ export const stepSchema: z.ZodType<Step> = z.lazy(() =>
     substeps: z.array(stepSchema).optional(),
     visualCue: z.string().optional(),
     estimatedDurationSeconds: z.number().int().positive().optional(),
+    detailLevel: z.enum(['standard', 'detailed']).optional(),
+    prepGuide: z.string().optional(),
+    cuttingGuide: z.string().optional(),
+    heatLevel: z.string().optional(),
+    whenToProceed: z.string().optional(),
+    mistakeToAvoid: z.string().optional(),
+    tip: z.string().optional(),
   }),
 );
 

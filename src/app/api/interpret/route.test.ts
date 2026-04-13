@@ -6,29 +6,28 @@ import { resetRateLimitStore } from '../../../server/security/rateLimiter';
 import { resetSessionStore } from '../../../server/security/sessionStore';
 import { POST as createSession } from '../auth/session/route';
 
-beforeEach(() => {
-  delete process.env.API_PROVIDER_API_KEY;
+beforeEach(async () => {
   delete process.env.UPSTASH_REDIS_REST_URL;
   delete process.env.UPSTASH_REDIS_REST_TOKEN;
   resetRateLimitStore();
-  resetSessionStore();
+  await resetSessionStore();
 });
 
 async function issueSessionId(): Promise<string> {
-  process.env.API_PROVIDER_API_KEY = 'test-secret';
   const sessionResponse = await createSession(
     new Request('http://localhost:3000/api/auth/session', {
       method: 'POST',
+      body: JSON.stringify({ mode: 'guest' }),
       headers: {
-        authorization: 'Bearer test-secret',
+        'content-type': 'application/json',
       },
     }),
   );
-  const sessionData = (await sessionResponse.json()) as { success: boolean; sessionId?: string };
-  if (!sessionData.sessionId) {
+  const sessionData = (await sessionResponse.json()) as { success: boolean; session?: { id?: string } };
+  if (!sessionData.session?.id) {
     throw new Error('session id issue failed');
   }
-  return sessionData.sessionId;
+  return sessionData.session.id;
 }
 
 describe('POST /api/interpret', () => {

@@ -1,22 +1,14 @@
 import { buildErrorResponse, ERROR_CODES } from '../errors/errorCodes';
-import { validateSession } from './sessionStore';
+import { validateSession, type SessionContext } from './sessionStore';
 
 export interface AuthGuardResult {
   isAuthorized: boolean;
+  session?: SessionContext | undefined;
   response?: Response;
 }
 
-function getBearerToken(authorizationHeader: string | null): string | null {
-  if (!authorizationHeader) {
-    return null;
-  }
-
-  const [scheme, token] = authorizationHeader.split(' ');
-  if (scheme?.toLowerCase() !== 'bearer' || !token) {
-    return null;
-  }
-
-  return token.trim();
+function unauthorizedResponse(status: 401 | 403, errorCode: keyof typeof ERROR_CODES, message: string): Response {
+  return Response.json(buildErrorResponse(ERROR_CODES[errorCode], message), { status });
 }
 
 export async function guardSession(request: Request): Promise<AuthGuardResult> {
@@ -24,55 +16,36 @@ export async function guardSession(request: Request): Promise<AuthGuardResult> {
   if (!sessionHeader) {
     return {
       isAuthorized: false,
-      response: Response.json(buildErrorResponse(ERROR_CODES.AUTH_REQUIRED, '세션 정보가 필요합니다.'), {
-        status: 401,
-      }),
+      response: unauthorizedResponse(401, 'AUTH_REQUIRED', '세션 정보가 필요합니다.'),
     };
   }
 
-  const isValid = await validateSession(sessionHeader.trim());
-  if (!isValid) {
+  const session = await validateSession(sessionHeader.trim());
+  if (!session) {
     return {
       isAuthorized: false,
-      response: Response.json(buildErrorResponse(ERROR_CODES.INVALID_SESSION, '유효하지 않은 세션입니다.'), {
-        status: 403,
-      }),
+      response: unauthorizedResponse(403, 'INVALID_SESSION', '유효하지 않은 세션입니다.'),
     };
   }
 
-  return { isAuthorized: true };
+  return {
+    isAuthorized: true,
+    session,
+  };
 }
 
-export function validateApiKeyBootstrap(request: Request): AuthGuardResult {
-  const configuredApiKey = process.env.API_PROVIDER_API_KEY;
-  if (!configuredApiKey) {
+export async function requireUserSession(request: Request): Promise<AuthGuardResult> {
+  const result = await guardSession(request);
+  if (!result.isAuthorized || !result.session) {
+    return result;
+  }
+
+  if (result.session.isGuest || !result.session.userId) {
     return {
       isAuthorized: false,
-      response: Response.json(
-        buildErrorResponse(ERROR_CODES.AUTH_REQUIRED, '서버에 API_PROVIDER_API_KEY가 설정되어야 합니다.'),
-        { status: 401 },
-      ),
+      response: unauthorizedResponse(403, 'AUTH_REQUIRED', '로그인한 사용자만 접근할 수 있습니다.'),
     };
   }
 
-  const token = getBearerToken(request.headers.get('authorization'));
-  if (!token) {
-    return {
-      isAuthorized: false,
-      response: Response.json(buildErrorResponse(ERROR_CODES.AUTH_REQUIRED, '인증 정보가 필요합니다.'), {
-        status: 401,
-      }),
-    };
-  }
-
-  if (token !== configuredApiKey) {
-    return {
-      isAuthorized: false,
-      response: Response.json(buildErrorResponse(ERROR_CODES.INVALID_API_KEY, '유효하지 않은 API 키입니다.'), {
-        status: 403,
-      }),
-    };
-  }
-
-  return { isAuthorized: true };
+  return result;
 }

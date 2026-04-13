@@ -24,6 +24,13 @@ export interface Step {
   substeps?: Step[] | undefined;
   visualCue?: string | undefined;
   estimatedDurationSeconds?: number | undefined;
+  detailLevel?: 'standard' | 'detailed' | undefined;
+  prepGuide?: string | undefined;
+  cuttingGuide?: string | undefined;
+  heatLevel?: string | undefined;
+  whenToProceed?: string | undefined;
+  mistakeToAvoid?: string | undefined;
+  tip?: string | undefined;
 }
 
 export interface Warning {

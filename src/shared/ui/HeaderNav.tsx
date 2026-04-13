@@ -2,12 +2,14 @@
 
 import Link from 'next/link';
 import { usePathname } from 'next/navigation';
-import { Home, Search, Clock, User } from 'lucide-react';
+import { Home, Search, Clock, User, Lock } from 'lucide-react';
 import { useTranslation } from '../i18n/TranslationContext';
+import { useAuth } from '../auth/AuthContext';
 
 export function HeaderNav() {
   const pathname = usePathname();
   const { t } = useTranslation();
+  const { session, isAuthenticated, isLoading } = useAuth();
 
   const navItems = [
     { href: '/', label: t.nav.home, icon: Home },
@@ -25,7 +27,8 @@ export function HeaderNav() {
         <Link href="/" className="text-2xl font-bold font-['Plus_Jakarta_Sans'] text-brand">
           TUTOLA
         </Link>
-        <nav className="hidden md:flex items-center gap-8">
+        <div className="hidden md:flex items-center gap-6">
+          <nav className="flex items-center gap-8">
           {navItems.map(({ href, label, icon: Icon }) => {
             const isActive = pathname === href;
             return (
@@ -41,10 +44,16 @@ export function HeaderNav() {
               </Link>
             );
           })}
-        </nav>
-        <nav className="flex md:hidden items-center gap-6">
+          </nav>
+          <div className="rounded-full border border-border/30 bg-white px-3 py-1.5 text-xs font-semibold text-foreground/70">
+            {isLoading ? '...' : isAuthenticated ? `${session?.displayName} · ${session?.role}` : 'Guest Mode'}
+          </div>
+        </div>
+        <div className="flex md:hidden items-center gap-4">
+        <nav className="flex items-center gap-6">
           {navItems.map(({ href, icon: Icon }) => {
             const isActive = pathname === href;
+            const isRestricted = (href === '/history' || href === '/profile') && !isAuthenticated;
             return (
               <Link
                 key={href}
@@ -53,11 +62,18 @@ export function HeaderNav() {
                   isActive ? 'text-brand' : 'text-foreground/50 hover:text-foreground'
                 }`}
               >
-                <Icon size={24} />
+                <div className="relative">
+                  <Icon size={24} />
+                  {isRestricted ? <Lock size={10} className="absolute -right-1 -top-1 text-brand" /> : null}
+                </div>
               </Link>
             );
           })}
         </nav>
+          <div className="rounded-full border border-border/30 bg-white px-2.5 py-1 text-[10px] font-semibold text-foreground/70">
+            {isAuthenticated ? session?.displayName : 'Guest'}
+          </div>
+        </div>
       </div>
     </header>
   );

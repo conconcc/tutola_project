@@ -2,12 +2,7 @@ import type { Metadata } from 'next';
 import './globals.css';
 import { HeaderNav } from '@/shared/ui/HeaderNav';
 import { TranslationProvider } from "@/shared/i18n/TranslationContext";
-import { Plus_Jakarta_Sans } from 'next/font/google';
-
-const plusJakartaSans = Plus_Jakarta_Sans({
-    subsets: ['latin'],
-    display: 'swap',
-});
+import { AuthProvider } from '@/shared/auth/AuthContext';
 
 export const metadata: Metadata = {
     title: 'TUTOLA — 라이프스타일 코칭 플랫폼',
@@ -21,12 +16,14 @@ export default function RootLayout({
 }>) {
     return (
         <html lang="en">
-        <body className={`${plusJakartaSans.className} antialiased bg-[#F5F2F0]`}>
+        <body className="antialiased bg-[#F5F2F0]">
         <TranslationProvider>
-            <HeaderNav />
-            <main className="min-h-screen pt-[72px]">
-                {children}
-            </main>
+            <AuthProvider>
+                <HeaderNav />
+                <main className="min-h-screen pt-[72px]">
+                    {children}
+                </main>
+            </AuthProvider>
         </TranslationProvider>
         </body>
         </html>

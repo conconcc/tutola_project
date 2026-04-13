@@ -156,3 +156,16 @@ Antigravity → 브라우저 검증, 배포, E2E 아티팩트 생성
 ## 라이선스
 
 MIT
+
+## Operations
+
+- Health check: `GET /api/health`
+- Check these logs first during incidents:
+  - `Plan API Error`
+  - `Ingredients API Error`
+  - structured security warnings from `securityLogger`
+- Rollback checklist:
+  - return to the previous successful deployment
+  - verify `GET /api/health`
+  - smoke test `/api/auth/session`, `/api/plan`, `/api/history`
+  - rerun `npx tsc --noEmit` and `npm run build` before redeploy

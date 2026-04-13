@@ -1,139 +1,114 @@
 'use client';
 
-import { useTranslation } from "@/shared/i18n/TranslationContext";
-import { ChevronRight, Globe, Bell, Palette, LogOut, Coffee } from "lucide-react";
-import { useHistoryStore } from "@/shared/store/useHistoryStore";
-import { useMemo } from "react";
+import { useState } from 'react';
+import { LogOut, UserCircle2, ShieldCheck } from 'lucide-react';
+
+import { useAuth } from '@/shared/auth/AuthContext';
 
 export default function ProfilePage() {
-  const { t, lang, setLang } = useTranslation();
-  const { history } = useHistoryStore();
+  const { session, isAuthenticated, isLoading, login, logout } = useAuth();
+  const [displayName, setDisplayName] = useState('');
+  const [role, setRole] = useState<'learner' | 'instructor'>('learner');
+  const [isSubmitting, setIsSubmitting] = useState(false);
+  const [error, setError] = useState<string | null>(null);
 
-  const totalPractices = history.length;
-  
-  const favoriteCategory = useMemo(() => {
-    if (history.length === 0) return '-';
-    // Count categories (we saved scenarioKey instead of category directly in history parameters)
-    // So let's just determine favorite by scenarioKey.
-    const counts = history.reduce((acc, curr) => {
-      acc[curr.scenarioKey] = (acc[curr.scenarioKey] || 0) + 1;
-      return acc;
-    }, {} as Record<string, number>);
-    const fav = Object.keys(counts).reduce((a, b) => (counts[a] ?? 0) > (counts[b] ?? 0) ? a : b);
-    return fav.toUpperCase();
-  }, [history]);
+  async function handleLogin(): Promise<void> {
+    if (!displayName.trim()) {
+      setError('이름을 입력해주세요.');
+      return;
+    }
 
-  // Rough estimation: each practice ~3 mins
-  const totalHours = (totalPractices * 3 / 60).toFixed(1);
+    setError(null);
+    setIsSubmitting(true);
+    try {
+      await login(displayName.trim(), role);
+      setDisplayName('');
+    } catch {
+      setError('로그인에 실패했습니다.');
+    } finally {
+      setIsSubmitting(false);
+    }
+  }
+
+  if (isLoading) {
+    return <div className="px-6 py-20 text-center text-foreground/50">Loading...</div>;
+  }
 
   return (
-    <div className="min-h-screen bg-[#F5F2F0] pb-32">
-      <div className="pt-12 px-6 max-w-2xl mx-auto space-y-10 animate-in fade-in duration-300">
-        
-        {/* Header */}
-        <div className="flex items-center justify-between">
-          <h1 className="text-4xl font-bold font-['Plus_Jakarta_Sans'] text-foreground">
-            {t.nav.profile}
-          </h1>
-        </div>
+    <div className="mx-auto max-w-2xl space-y-8 px-6 py-10 pb-24">
+      <div className="space-y-2">
+        <h1 className="text-4xl font-bold">프로필</h1>
+        <p className="text-foreground/60">게스트는 체험만 할 수 있고, 로그인하면 기록 저장과 레슨 공유가 열립니다.</p>
+      </div>
 
-        {/* User Info Card */}
-        <div className="p-6 bg-white rounded-3xl border border-border/30 shadow-sm flex items-center justify-between">
-          <div className="flex items-center gap-5">
-            <div className="w-16 h-16 bg-brand/10 text-brand rounded-full flex items-center justify-center text-2xl font-bold font-['Plus_Jakarta_Sans']">
-              U
-            </div>
-            <div>
-              <h2 className="text-xl font-bold text-foreground">User</h2>
-              <p className="text-sm text-foreground/50">user@tutola.com</p>
-            </div>
+      <div className="rounded-[2rem] border border-border/30 bg-white p-8 shadow-sm">
+        <div className="mb-6 flex items-center gap-4">
+          <div className="rounded-full bg-brand/10 p-4 text-brand">
+            {isAuthenticated ? <ShieldCheck size={28} /> : <UserCircle2 size={28} />}
           </div>
-          <button className="px-5 py-2.5 rounded-full border border-border/40 text-sm font-bold text-foreground/70 hover:bg-foreground/[0.02] transition-colors">
-            Edit
-          </button>
-        </div>
-
-        {/* Statistics Grid */}
-        <div className="grid grid-cols-2 md:grid-cols-3 gap-4">
-          <div className="p-6 bg-white rounded-3xl border border-border/30 shadow-sm flex flex-col justify-center text-center space-y-2">
-            <div className="text-3xl font-bold font-['Plus_Jakarta_Sans'] text-brand">
-              {totalPractices}
+          <div>
+            <div className="text-sm font-semibold uppercase tracking-[0.2em] text-brand">
+              {isAuthenticated ? 'Signed In' : 'Guest Mode'}
             </div>
-            <div className="text-xs font-bold tracking-widest text-foreground/50 uppercase">
-              Total Practices
+            <div className="text-2xl font-bold">
+              {session?.displayName ?? 'Guest'}
             </div>
-          </div>
-          <div className="p-6 bg-white rounded-3xl border border-border/30 shadow-sm flex flex-col justify-center text-center space-y-2">
-            <div className="text-xl font-bold font-['Plus_Jakarta_Sans'] text-brand flex items-center justify-center gap-1">
-              <Coffee size={20} /> {favoriteCategory}
-            </div>
-            <div className="text-xs font-bold tracking-widest text-foreground/50 uppercase">
-              Favorite
-            </div>
-          </div>
-          <div className="col-span-2 md:col-span-1 p-6 bg-white rounded-3xl border border-border/30 shadow-sm flex flex-col justify-center text-center space-y-2">
-            <div className="text-3xl font-bold font-['Plus_Jakarta_Sans'] text-brand">
-              {totalHours}h
-            </div>
-            <div className="text-xs font-bold tracking-widest text-foreground/50 uppercase">
-              Total Hours
+            <div className="text-sm text-foreground/50">
+              {session?.role ?? 'guest'}
             </div>
           </div>
         </div>
 
-        {/* Settings List */}
-        <div className="space-y-3">
-          <h3 className="text-sm font-bold tracking-widest text-foreground/40 uppercase mb-4 px-2">Settings</h3>
-          
-          <button 
-            onClick={() => setLang(lang === 'ko' ? 'en' : 'ko')}
-            className="w-full flex items-center justify-between p-4 bg-white rounded-2xl border border-border/20 hover:border-brand/30 hover:shadow-sm transition-all group cursor-pointer"
-          >
-            <div className="flex items-center gap-4">
-              <div className="p-3 bg-brand/10 rounded-xl text-brand group-hover:bg-brand group-hover:text-white transition-colors">
-                <Globe size={20} />
+        {isAuthenticated ? (
+          <div className="space-y-4">
+            <p className="text-foreground/60">
+              이제 기록 저장, 템플릿 만들기, 공유 링크 생성, 프로필/히스토리 접근이 가능합니다.
+            </p>
+            <button
+              onClick={() => void logout()}
+              className="rounded-full border border-border/30 px-5 py-3 font-bold text-foreground/70"
+            >
+              <LogOut size={16} className="mr-2 inline" />
+              로그아웃
+            </button>
+          </div>
+        ) : (
+          <div className="space-y-4">
+            <div className="space-y-2">
+              <label className="text-sm font-semibold text-foreground/70">표시 이름</label>
+              <input
+                value={displayName}
+                onChange={(event) => setDisplayName(event.target.value)}
+                placeholder="예: 김수강"
+                className="w-full rounded-2xl border border-border/30 px-4 py-3 outline-none focus:border-brand"
+              />
+            </div>
+            <div className="space-y-2">
+              <label className="text-sm font-semibold text-foreground/70">역할</label>
+              <div className="flex gap-3">
+                {(['learner', 'instructor'] as const).map((item) => (
+                  <button
+                    key={item}
+                    onClick={() => setRole(item)}
+                    className={`rounded-full px-4 py-2 text-sm font-bold ${
+                      role === item ? 'bg-brand text-white' : 'bg-foreground/[0.05] text-foreground/60'
+                    }`}
+                  >
+                    {item === 'learner' ? '수강생' : '강사'}
+                  </button>
+                ))}
               </div>
-              <span className="font-medium text-foreground">Language</span>
             </div>
-            <div className="flex items-center gap-3">
-              <span className="text-sm font-bold text-foreground/40">{lang === 'ko' ? '한국어' : 'English'}</span>
-              <ChevronRight className="text-foreground/30 group-hover:text-brand transition-colors" />
-            </div>
-          </button>
-
-          <button className="w-full flex items-center justify-between p-4 bg-white rounded-2xl border border-border/20 hover:border-brand/30 hover:shadow-sm transition-all group cursor-pointer">
-            <div className="flex items-center gap-4">
-              <div className="p-3 bg-brand/10 rounded-xl text-brand group-hover:bg-brand group-hover:text-white transition-colors">
-                <Bell size={20} />
-              </div>
-              <span className="font-medium text-foreground">Notifications</span>
-            </div>
-            <ChevronRight className="text-foreground/30 group-hover:text-brand transition-colors" />
-          </button>
-
-          <button className="w-full flex items-center justify-between p-4 bg-white rounded-2xl border border-border/20 hover:border-brand/30 hover:shadow-sm transition-all group cursor-pointer">
-            <div className="flex items-center gap-4">
-              <div className="p-3 bg-brand/10 rounded-xl text-brand group-hover:bg-brand group-hover:text-white transition-colors">
-                <Palette size={20} />
-              </div>
-              <span className="font-medium text-foreground">App Theme</span>
-            </div>
-            <div className="flex items-center gap-3">
-              <span className="text-sm font-bold text-foreground/40">Light</span>
-              <ChevronRight className="text-foreground/30 group-hover:text-brand transition-colors" />
-            </div>
-          </button>
-          
-          <button className="w-full flex items-center justify-between p-4 bg-white rounded-2xl border border-border/20 hover:border-red-500/30 hover:shadow-sm transition-all group mt-6 cursor-pointer">
-            <div className="flex items-center gap-4">
-              <div className="p-3 bg-red-50 text-red-500 rounded-xl group-hover:bg-red-500 group-hover:text-white transition-colors">
-                <LogOut size={20} />
-              </div>
-              <span className="font-medium text-red-500">Log Out</span>
-            </div>
-          </button>
-        </div>
-
+            {error ? <div className="text-sm text-red-500">{error}</div> : null}
+            <button
+              disabled={isSubmitting}
+              onClick={() => void handleLogin()}
+              className="rounded-full bg-brand px-6 py-3 font-bold text-white disabled:opacity-50"
+            >
+              {isSubmitting ? '로그인 중...' : '임시 로그인'}
+            </button>
+          </div>
+        )}
       </div>
     </div>
   );

@@ -2,117 +2,131 @@ import { anthropic } from '@ai-sdk/anthropic';
 import { generateObject } from 'ai';
 import { z } from 'zod';
 import { NextResponse } from 'next/server';
+
 import { loadPrompt } from '@/lib/promptLoader';
+import { buildCoffeePlan } from '@/features/coffee/application/buildCoffeePlan';
+import { buildLaundryPlan } from '@/features/laundry/application/buildLaundryPlan';
+import { buildCookingPlan } from '@/features/cooking/application/buildCookingPlan';
+import { guardSession } from '@/server/security/authGuard';
+import { guardRateLimit } from '@/server/security/rateLimiter';
 
 export const maxDuration = 45;
 
-// ─── 요청 스키마 ────────────────────────────────────────────────────────────
-
-const finalizedIngredientSchema = z.object({
-  name: z.string(),
-  amount: z.string(),
-  isAdded: z.boolean().optional(),
-  isRemoved: z.boolean().optional(),
+const detailedStepSchema = z.object({
+  id: z.string(),
+  title: z.string(),
+  description: z.string(),
+  status: z.literal('pending'),
+  hint: z.string().optional(),
+  estimatedDurationSeconds: z.number().int().positive(),
+  detailLevel: z.enum(['standard', 'detailed']).default('detailed'),
+  prepGuide: z.string().optional(),
+  cuttingGuide: z.string().optional(),
+  heatLevel: z.string().optional(),
+  whenToProceed: z.string().optional(),
+  mistakeToAvoid: z.string().optional(),
+  tip: z.string().optional(),
 });
 
-const requestSchema = z.object({
-  skillId: z.enum(['coffee', 'laundry', 'cooking']),
-  // coffee
-  coffeeBean: z.string().optional(),
-  temperature: z.number().optional(),
-  beanAmount: z.number().optional(),
-  targetWater: z.number().optional(),
-  flavorPreference: z.string().optional(),
-  kettleAvailable: z.boolean().optional(),
-  // laundry
-  clothingItem: z.string().optional(),
-  fabricType: z.string().optional(),
-  soilLevel: z.string().optional(),
-  loadWeight: z.string().optional(),
-  washerType: z.string().optional(),
-  // cooking
-  dishName: z.string().optional(),
-  servings: z.number().optional(),
-  cookingLevel: z.string().optional(),
-  finalizedIngredients: z.array(finalizedIngredientSchema).optional(),
-});
+const requestSchema = z.discriminatedUnion('skillId', [
+  z.object({
+    skillId: z.literal('coffee'),
+    beanAmount: z.coerce.number().optional(),
+    targetWater: z.coerce.number().optional(),
+    waterAmount: z.coerce.number().optional(),
+    flavorPreference: z.enum(['light', 'balanced', 'strong']).optional(),
+    kettleAvailable: z.coerce.boolean().optional(),
+  }),
+  z.object({
+    skillId: z.literal('laundry'),
+    fabricType: z.string().optional(),
+    soilLevel: z.string().optional(),
+    washerType: z.string().optional(),
+  }),
+  z.object({
+    skillId: z.literal('cooking'),
+    dishName: z.string().min(1),
+    servings: z.coerce.number().int().min(1).max(8),
+    cookingLevel: z.string().optional(),
+    finalizedIngredients: z
+      .array(
+        z.object({
+          name: z.string(),
+          amount: z.string(),
+          isAdded: z.boolean().optional(),
+          isRemoved: z.boolean().optional(),
+        }),
+      )
+      .optional(),
+  }),
+]);
 
-type PlanRequest = z.infer<typeof requestSchema>;
+function buildCookingSystemPrompt(): string {
+  const basePrompt = loadPrompt('adaptive-plan', 'v1.0.0');
+  return `${basePrompt}
 
-// ─── AI 출력 스키마 ─────────────────────────────────────────────────────────
-
-const outputSchema = z.object({
-  steps: z.array(
-    z.object({
-      id: z.string().describe('스텝 고유 ID (예: "step-1")'),
-      title: z.string().describe('스텝 제목'),
-      description: z.string().describe('구체적인 행동 지침'),
-      status: z.literal('pending'),
-      hint: z.string().optional().describe('숙련도에 맞는 실용적인 팁'),
-      estimatedDurationSeconds: z.number().int().positive().describe('예상 소요 시간(초)'),
-    }),
-  ).describe('세분화된 과정 배열'),
-});
-
-// ─── 시나리오별 프롬프트 빌더 ───────────────────────────────────────────────
-
-function getSystemPrompt(body: PlanRequest): string {
-  if (body.skillId === 'coffee') {
-    return `<persona>당신은 친숙하고 다정한 동네 단골 카페 바리스타입니다. 실생활에서 바로 쓸 수 있는 실용적인 팁을 선호하며 친절한 존댓말을 사용합니다.</persona>
-<rules>
-1. 사용자가 입력한 조건(원두, 물 온도, 드리퍼 등)에 맞춰 핸드드립 추출 순서와 팁을 작성하세요.
-2. 반드시 주어진 JSON 스키마 형태로만 출력하세요.
-</rules>
-<edge_cases>
-1. 장난스러운 원두 이름(예: "김치찌개맛"): 정색하지 말고 넉살 좋게 받아치고 표준 브루잉 플랜을 제공하세요.
-2. 주전자 없음: 종이컵 끝을 구부려 대체하는 현실적인 야매 팁을 포함하세요.
-</edge_cases>`;
-  }
-
-  if (body.skillId === 'laundry') {
-    return `<persona>당신은 동네 세탁소 사장님처럼 친근하고 다정한 세탁 마스터입니다. 옷감을 보호하면서 깨끗이 세탁하는 방법을 친절한 존댓말로 안내합니다.</persona>
-<rules>
-1. 입력된 조건(옷 종류, 옷감, 오염도, 세탁량)을 분석하여 세탁 순서를 작성하세요.
-2. 세탁량에 비례하여 세제 투입량을 명시하세요.
-3. 반드시 주어진 JSON 스키마 형태로만 출력하세요.
-</rules>
-<edge_cases>
-1. 세탁기 절대 금지 의류(가죽 자켓, 오리털 패딩, 명품 실크 등): 스텝 1번에 "세탁기 절대 금지! 세탁소에 맡기세요." 강력 경고를 포함하세요.
-</edge_cases>`;
-  }
-
-  // cooking — 전용 프롬프트 파일 사용
-  return loadPrompt('adaptive-plan', 'v1.0.0');
+Write the cooking lesson like a detailed class handout.
+- Split the lesson into at least 7 steps.
+- Include prep, washing, cutting, heating, ingredient order, heat control, seasoning, and plating.
+- Add concrete cutting sizes whenever possible.
+- Fill prepGuide, heatLevel, whenToProceed, mistakeToAvoid, and tip whenever relevant.
+- Explain the sensory cue for moving to the next step.`;
 }
 
-function getUserPrompt(body: PlanRequest): string {
-  if (body.skillId === 'coffee') {
-    return `원두: ${body.coffeeBean ?? '에티오피아 예가체프'}, 물 온도: ${body.temperature ?? 92}도, 원두 ${body.beanAmount ?? 15}g / 물 ${body.targetWater ?? 250}g, 맛 선호도: ${body.flavorPreference ?? 'balanced'}, 주전자 유무: ${body.kettleAvailable ?? true}`;
-  }
-
-  if (body.skillId === 'laundry') {
-    return `옷 종류: ${body.clothingItem ?? '일반 의류'}, 옷감: ${body.fabricType ?? 'cotton'}, 오염도: ${body.soilLevel ?? 'normal'}, 세탁량: ${body.loadWeight ?? 'medium'}, 세탁기 종류: ${body.washerType ?? 'front_load'}`;
-  }
-
-  // cooking
-  const ingredientText = (body.finalizedIngredients ?? [])
-    .map(
-      item =>
-        `- ${item.name} (${item.amount})${item.isAdded === true ? ' [추가됨]' : ''}${item.isRemoved === true ? ' [제거됨]' : ''}`,
-    )
+function buildCookingPrompt(body: Extract<z.infer<typeof requestSchema>, { skillId: 'cooking' }>): string {
+  const ingredients = (body.finalizedIngredients ?? [])
+    .map((item) => `- ${item.name} (${item.amount})${item.isRemoved ? ' [removed]' : ''}${item.isAdded ? ' [added]' : ''}`)
     .join('\n');
 
-  return `요리: ${body.dishName ?? '미정'}
-숙련도: ${body.cookingLevel ?? '초보'}
-인분 수: ${body.servings ?? 1}인분
+  return `Dish: ${body.dishName}
+Servings: ${body.servings}
+Skill level: ${body.cookingLevel ?? 'beginner'}
 
-[확정된 재료 목록]
-${ingredientText || '(재료 미입력)'}`;
+Ingredients:
+${ingredients.length > 0 ? ingredients : '- no ingredient list provided'}
+
+Generate a student-friendly cooking lesson with precise cutting size, ingredient order, heat control, and checkpoints.`;
 }
 
-// ─── Route Handler ───────────────────────────────────────────────────────────
+function buildFallbackPlan(parsedBody: z.infer<typeof requestSchema>) {
+  if (parsedBody.skillId === 'coffee') {
+    return buildCoffeePlan({
+      beanAmount: parsedBody.beanAmount ?? 20,
+      waterAmount: parsedBody.targetWater ?? parsedBody.waterAmount ?? 300,
+      dripperType: 'v60',
+      kettleAvailable: parsedBody.kettleAvailable ?? true,
+      flavorPreference: parsedBody.flavorPreference ?? 'balanced',
+      currentStepId: '',
+      currentView: 'front',
+    });
+  }
+
+  if (parsedBody.skillId === 'laundry') {
+    return buildLaundryPlan({
+      fabricType: parsedBody.fabricType ?? 'cotton',
+      soilLevel: parsedBody.soilLevel ?? 'light',
+      washerType: parsedBody.washerType ?? 'front_load',
+    });
+  }
+
+  return buildCookingPlan({
+    dishName: parsedBody.dishName,
+    servings: parsedBody.servings,
+    cookingLevel: parsedBody.cookingLevel ?? 'beginner',
+  });
+}
 
 export async function POST(req: Request): Promise<Response> {
+  const auth = await guardSession(req);
+  if (!auth.isAuthorized) {
+    return auth.response ?? NextResponse.json({ success: false }, { status: 401 });
+  }
+
+  const rateLimit = await guardRateLimit(req);
+  if (!rateLimit.isAllowed) {
+    return rateLimit.response ?? NextResponse.json({ success: false }, { status: 429 });
+  }
+
   let rawBody: unknown;
   try {
     rawBody = await req.json();
@@ -122,30 +136,37 @@ export async function POST(req: Request): Promise<Response> {
 
   const parsed = requestSchema.safeParse(rawBody);
   if (!parsed.success) {
-    return NextResponse.json(
-      { error: 'skillId(coffee|laundry|cooking)는 필수이며 올바른 형식이어야 합니다.' },
-      { status: 400 },
-    );
+    return NextResponse.json({ error: 'Invalid plan request payload' }, { status: 400 });
   }
 
   const body = parsed.data;
 
   try {
+    if (auth.session?.isGuest || body.skillId !== 'cooking') {
+      return NextResponse.json({ results: buildFallbackPlan(body), source: 'fallback' });
+    }
+
     const result = await generateObject({
       model: anthropic('claude-sonnet-4-6'),
       output: 'object',
-      system: getSystemPrompt(body),
-      prompt: getUserPrompt(body),
-      schema: outputSchema,
-      temperature: 0.6,
+      system: buildCookingSystemPrompt(),
+      prompt: buildCookingPrompt(body),
+      schema: z.object({
+        steps: z.array(detailedStepSchema).min(7),
+      }),
+      temperature: 0.4,
     });
 
-    return NextResponse.json({ results: result.object.steps });
+    return NextResponse.json({ results: result.object.steps, source: 'ai' });
   } catch (error) {
     console.error('[Plan API Error]', error);
     return NextResponse.json(
-      { error: 'AI 서비스 오류가 발생했습니다. 잠시 후 다시 시도해주세요.' },
-      { status: 500 },
+      {
+        results: buildFallbackPlan(body),
+        source: 'fallback',
+        degraded: true,
+      },
+      { status: 200 },
     );
   }
 }

@@ -1,176 +1,120 @@
 'use client';
-import { useEffect, useState, useMemo } from "react";
-import { useTranslation } from "@/shared/i18n/TranslationContext";
-import { useHistoryStore } from "@/shared/store/useHistoryStore";
-import { motion, AnimatePresence } from "motion/react";
-import { Clock, Bookmark, Play, Trash2 } from "lucide-react";
-import { useRouter } from "next/navigation";
 
-type ScenarioMeta = {
+import { useEffect, useState } from 'react';
+import { useRouter } from 'next/navigation';
+import { Bookmark, Clock, Play, Share2 } from 'lucide-react';
+
+import { useAuth, fetchWithSession } from '@/shared/auth/AuthContext';
+
+interface HistoryRecord {
+  id: string;
   scenarioKey: string;
-  titleKo: string;
-  titleEn: string;
-  category: string;
-};
+  customName?: string | null;
+  parameters: Record<string, unknown>;
+  planSteps: Array<{ id: string; title: string }>;
+  completedAt: string;
+}
 
 export default function HistoryPage() {
-  const { t, lang } = useTranslation();
   const router = useRouter();
-  const { history, toggleSave, removeHistory } = useHistoryStore();
-
-  const [activeTab, setActiveTab] = useState<'RECENT' | 'SAVED'>('RECENT');
-  const [scenariosData, setScenariosData] = useState<Record<string, ScenarioMeta>>({});
-  const [isClient, setIsClient] = useState(false);
+  const { isAuthenticated, isLoading } = useAuth();
+  const [history, setHistory] = useState<HistoryRecord[]>([]);
+  const [error, setError] = useState<string | null>(null);
 
   useEffect(() => {
-    // Fetch scenario metadata and mark as client-mounted in one callback
-    const fetchScenarios = async () => {
-      try {
-        const res = await fetch('/api/scenarios');
-        const data = await res.json();
-        if (data.results) {
-          const map: Record<string, ScenarioMeta> = {};
-          (data.results as ScenarioMeta[]).forEach((s) => { map[s.scenarioKey] = s; });
-          setScenariosData(map);
-        }
-      } catch (e) {
-        console.error("Failed to load scenarios", e);
-      } finally {
-        setIsClient(true);
+    if (!isAuthenticated) {
+      return;
+    }
+
+    async function loadHistory(): Promise<void> {
+      const response = await fetchWithSession('/api/history');
+      const data = (await response.json()) as { results?: HistoryRecord[]; error?: string };
+      if (!response.ok) {
+        setError(data.error ?? '기록을 불러오지 못했습니다.');
+        return;
       }
-    };
-    void fetchScenarios();
-  }, []);
 
-  const displayList = useMemo(() => {
-    return history.filter(record => activeTab === 'RECENT' ? true : record.isSaved);
-  }, [history, activeTab]);
+      setHistory(data.results ?? []);
+    }
 
-  if (!isClient) return null; // Zustand persist는 클라이언트에서만 동작하므로 hydration 대기
+    void loadHistory();
+  }, [isAuthenticated]);
+
+  if (isLoading) {
+    return <div className="px-6 py-20 text-center text-foreground/50">Loading...</div>;
+  }
+
+  if (!isAuthenticated) {
+    return (
+      <div className="mx-auto flex min-h-[70vh] max-w-2xl flex-col items-center justify-center gap-4 px-6 text-center">
+        <Bookmark size={44} className="text-brand" />
+        <h1 className="text-3xl font-bold">기록은 로그인 후에 볼 수 있어요</h1>
+        <p className="max-w-md text-foreground/60">
+          게스트 모드에서는 실습 체험만 가능하고, 기록 저장과 공유는 로그인 사용자에게만 열려 있습니다.
+        </p>
+        <button
+          onClick={() => router.push('/profile')}
+          className="rounded-full bg-brand px-6 py-3 font-bold text-white"
+        >
+          프로필에서 로그인하기
+        </button>
+      </div>
+    );
+  }
 
   return (
-    <div className="min-h-screen bg-[#F5F2F0] pb-32">
-      <div className="pt-12 px-6 max-w-4xl mx-auto space-y-8">
-        
-        {/* Header */}
-        <div className="space-y-6">
-          <h1 className="text-4xl font-bold font-['Plus_Jakarta_Sans'] text-foreground">{t.nav.history}</h1>
-          
-          {/* Tabs */}
-          <div className="flex bg-foreground/[0.05] p-1.5 rounded-2xl max-w-sm">
-            <button
-              onClick={() => setActiveTab('RECENT')}
-              className={`flex-1 py-3 text-sm font-bold tracking-wider rounded-xl transition-all ${
-                activeTab === 'RECENT' ? 'bg-white shadow-md text-brand' : 'text-foreground/50 hover:text-foreground'
-              }`}
-            >
-              Recent History
-            </button>
-            <button
-              onClick={() => setActiveTab('SAVED')}
-              className={`flex-1 py-3 text-sm font-bold tracking-wider rounded-xl transition-all ${
-                activeTab === 'SAVED' ? 'bg-white shadow-md text-brand' : 'text-foreground/50 hover:text-foreground'
-              }`}
-            >
-              Saved
-            </button>
+    <div className="mx-auto max-w-4xl space-y-6 px-6 py-10 pb-24">
+      <div className="space-y-2">
+        <h1 className="text-4xl font-bold">내 기록</h1>
+        <p className="text-foreground/60">최근 실습 기록과 공유 가능한 레슨 템플릿의 원본이 여기에 쌓입니다.</p>
+      </div>
+
+      {error ? <div className="rounded-3xl bg-red-50 p-4 text-sm text-red-600">{error}</div> : null}
+
+      <div className="space-y-4">
+        {history.length === 0 ? (
+          <div className="rounded-[2rem] border border-border/30 bg-white p-10 text-center text-foreground/50">
+            아직 저장된 기록이 없습니다.
           </div>
-        </div>
-
-        {/* List */}
-        <div className="space-y-4 pt-4">
-          <AnimatePresence mode="popLayout">
-            {displayList.length > 0 ? (
-              displayList.map((record) => {
-                const meta = scenariosData[record.scenarioKey];
-                const title = meta ? (lang === 'ko' ? meta.titleKo : meta.titleEn) : record.scenarioKey;
-                const category = meta?.category || 'PRACTICE';
-                const dateString = new Date(record.completedAt).toLocaleDateString(lang === 'ko' ? 'ko-KR' : 'en-US', {
-                  month: 'short', day: 'numeric', hour: '2-digit', minute: '2-digit'
-                });
-
-                return (
-                  <motion.div
-                    layout
-                    initial={{ opacity: 0, y: 20 }}
-                    animate={{ opacity: 1, y: 0 }}
-                    exit={{ opacity: 0, scale: 0.95 }}
-                    key={record.id}
-                    className="p-6 bg-white rounded-3xl border border-border/30 hover:border-brand/30 shadow-sm transition-all flex flex-col gap-6 group relative"
-                  >
-                    {/* Top line: Category and Delete */}
-                    <div className="flex items-center justify-between">
-                      <span className="text-xs font-bold tracking-widest text-brand bg-brand/10 px-3 py-1 rounded-full">
-                        {category}
-                      </span>
-                      <button
-                         onClick={() => removeHistory(record.id)}
-                         className="p-2 rounded-xl hover:bg-red-50 hover:text-red-500 text-foreground/30 transition-colors"
-                      >
-                         <Trash2 size={18} />
-                      </button>
-                    </div>
-
-                    {/* Middle line: Title and Params */}
-                    <div className="space-y-3">
-                      <div className="text-2xl font-bold font-['Plus_Jakarta_Sans'] text-foreground">
-                        {record.customName || title}
-                      </div>
-
-                      {/* Parameters Summary */}
-                      {Object.keys(record.parameters).length > 0 && (
-                        <div className="flex flex-wrap gap-2 text-sm text-foreground/60 bg-foreground/[0.02] p-3 rounded-xl border border-border/10 inline-flex">
-                          {Object.entries(record.parameters).map(([key, val]) => (
-                            <span key={key} className="font-medium">
-                              <span className="opacity-70 capitalize">{key}:</span> {val as string}
-                            </span>
-                          ))}
-                        </div>
-                      )}
-                    </div>
-
-                    {/* Bottom line: Time, Save, Retry (All on one line) */}
-                    <div className="flex items-center justify-between pt-4 border-t border-border/10">
-                      <span className="text-sm text-foreground/40 flex items-center gap-1 font-medium">
-                        <Clock size={16} />
-                        {dateString}
-                      </span>
-
-                      <div className="flex items-center gap-2">
-                        <button
-                          onClick={() => toggleSave(record.id)}
-                          className={`p-3 rounded-full transition-colors flex items-center justify-center ${
-                            record.isSaved ? 'bg-brand/10 text-brand' : 'bg-foreground/[0.03] text-foreground/40 hover:text-brand'
-                          }`}
-                        >
-                          <Bookmark size={20} className={record.isSaved ? 'fill-brand' : ''} />
-                        </button>
-                        <button
-                          onClick={() => router.push(`/setup/${record.scenarioKey}`)}
-                          className="px-6 py-3 bg-foreground/[0.03] hover:bg-brand hover:text-white rounded-xl text-foreground transition-all flex items-center justify-center gap-2 font-bold cursor-pointer"
-                        >
-                          <Play size={18} /> Retry
-                        </button>
-                      </div>
-                    </div>
-                  </motion.div>
-                );
-              })
-            ) : (
-              <div className="text-center py-24 text-foreground/40 space-y-4">
-                <Bookmark size={48} className="mx-auto opacity-20" />
-                <p>{activeTab === 'RECENT' ? "No recent practices found." : "No saved practices yet."}</p>
+        ) : (
+          history.map((record) => (
+            <div key={record.id} className="rounded-[2rem] border border-border/30 bg-white p-6 shadow-sm">
+              <div className="flex items-start justify-between gap-4">
+                <div className="space-y-2">
+                  <div className="text-xs font-bold uppercase tracking-[0.2em] text-brand">{record.scenarioKey}</div>
+                  <h2 className="text-2xl font-bold">{record.customName ?? `${record.scenarioKey} lesson`}</h2>
+                  <div className="flex items-center gap-2 text-sm text-foreground/50">
+                    <Clock size={16} />
+                    {new Date(record.completedAt).toLocaleString()}
+                  </div>
+                </div>
                 <button
-                  onClick={() => router.push('/discover')}
-                  className="mt-4 px-6 py-3 bg-brand text-white rounded-full font-bold text-sm"
+                  onClick={() => router.push(`/setup/${record.scenarioKey}`)}
+                  className="rounded-full bg-brand/10 px-4 py-2 text-sm font-bold text-brand"
                 >
-                  Explore Practices
+                  <Play size={16} className="mr-1 inline" />
+                  다시 실행
                 </button>
               </div>
-            )}
-          </AnimatePresence>
-        </div>
-
+              <div className="mt-4 flex flex-wrap gap-2">
+                {record.planSteps.slice(0, 4).map((step) => (
+                  <span key={step.id} className="rounded-full bg-foreground/[0.04] px-3 py-1 text-xs text-foreground/60">
+                    {step.title}
+                  </span>
+                ))}
+                {record.planSteps.length > 4 ? (
+                  <span className="rounded-full bg-foreground/[0.04] px-3 py-1 text-xs text-foreground/60">
+                    +{record.planSteps.length - 4} steps
+                  </span>
+                ) : null}
+              </div>
+              <div className="mt-5 text-xs font-medium text-foreground/45">
+                <Share2 size={14} className="mr-1 inline" />
+                공유 가능한 템플릿은 실습 완료 후 저장 화면에서 생성할 수 있습니다.
+              </div>
+            </div>
+          ))
+        )}
       </div>
     </div>
   );

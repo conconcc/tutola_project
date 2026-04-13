@@ -48,6 +48,11 @@ async function incrementFromUpstash(clientKey: string): Promise<number | null> {
 }
 
 function getClientKey(request: Request): string {
+  const sessionId = request.headers.get('x-session-id');
+  if (sessionId) {
+    return `session:${sessionId.trim()}`;
+  }
+
   const forwardedFor = request.headers.get('x-forwarded-for');
   if (forwardedFor) {
     return forwardedFor.split(',')[0]?.trim() ?? 'unknown';

@@ -102,13 +102,86 @@ model progress_events {
 
 model Session {
   id         String   @id @default(uuid())
+  userId     String?  @db.Uuid
+  role       String   @default("guest")
+  displayName String  @default("Guest")
+  isGuest    Boolean  @default(true)
   createdAt  DateTime @default(now())
   expiresAt  DateTime
   createdBy  String?
   userAgent  String?
   ipAddress  String?
+  user       User?    @relation(fields: [userId], references: [id], onDelete: SetNull)
 
   @@index([expiresAt])
+  @@index([userId])
+  @@index([role])
+}
+
+model User {
+  id               String            @id @default(dbgenerated("gen_random_uuid()")) @db.Uuid
+  displayName      String
+  role             String
+  createdAt        DateTime          @default(now()) @db.Timestamptz(6)
+  updatedAt        DateTime          @default(now()) @db.Timestamptz(6)
+  sessions         Session[]
+  practiceHistories PracticeHistory[]
+  lessonTemplates  LessonTemplate[]
+
+  @@unique([displayName, role])
+}
+
+model ClassTag {
+  id             String           @id @default(dbgenerated("gen_random_uuid()")) @db.Uuid
+  slug           String           @unique
+  label          String
+  createdAt      DateTime         @default(now()) @db.Timestamptz(6)
+  lessonTemplates LessonTemplate[]
+}
+
+model PracticeHistory {
+  id              String         @id @default(uuid())
+  userId          String         @db.Uuid
+  scenarioKey     String
+  customName      String?
+  parameters      Json
+  planSteps       Json
+  completedAt     DateTime       @default(now()) @db.Timestamptz(6)
+  idempotencyKey  String         @unique
+  templateSourceId String?
+  user            User           @relation(fields: [userId], references: [id], onDelete: Cascade)
+
+  @@index([userId, completedAt])
+  @@index([scenarioKey])
+}
+
+model LessonTemplate {
+  id             String         @id @default(uuid())
+  userId         String         @db.Uuid
+  scenarioKey    String
+  title          String
+  classTagId     String?        @db.Uuid
+  description    String?
+  parameters     Json
+  planSteps      Json
+  createdAt      DateTime       @default(now()) @db.Timestamptz(6)
+  updatedAt      DateTime       @default(now()) @db.Timestamptz(6)
+  user           User           @relation(fields: [userId], references: [id], onDelete: Cascade)
+  classTag       ClassTag?      @relation(fields: [classTagId], references: [id], onDelete: SetNull)
+  shares         LessonShare[]
+
+  @@index([userId, createdAt])
+  @@index([scenarioKey])
+}
+
+model LessonShare {
+  id               String         @id @default(uuid())
+  lessonTemplateId String
+  shareToken       String         @unique
+  createdAt        DateTime       @default(now()) @db.Timestamptz(6)
+  lessonTemplate   LessonTemplate @relation(fields: [lessonTemplateId], references: [id], onDelete: Cascade)
+
+  @@index([lessonTemplateId])
 }
 
 model SecurityEvent {
@@ -148,4 +221,3 @@ model PracticeScenario {
 
   @@index([scenarioKey])
 }
-
