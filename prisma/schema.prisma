@@ -148,3 +148,4 @@ model PracticeScenario {
 
   @@index([scenarioKey])
 }
+
