@@ -53,13 +53,16 @@ export default function PracticeView() {
   // Load dynamic plan from session storage
   useEffect(() => {
     const stored = sessionStorage.getItem(`${skillId}DynamicPlan`);
-    if (stored) {
-      try {
-        setDynamicSteps(JSON.parse(stored));
-      } catch (e) {
-        console.error(`Failed to parse dynamic steps for ${skillId}`);
-      }
+    if (!stored) return;
+    let parsed: Step[];
+    try {
+      parsed = JSON.parse(stored) as Step[];
+    } catch {
+      console.error(`Failed to parse dynamic steps for ${skillId}`);
+      return;
     }
+    // eslint-disable-next-line react-hooks/set-state-in-effect
+    setDynamicSteps(parsed);
   }, [skillId]);
 
   const formatTime = (secs: number) => {

@@ -2,9 +2,9 @@
 
 import { useEffect, useState } from "react";
 import { useParams, useRouter, useSearchParams } from "next/navigation";
-import { ChevronLeft, ArrowRight, Check, Plus, Trash2, Beaker } from "lucide-react";
+import { ChevronLeft, ArrowRight, Check, Plus, Beaker } from "lucide-react";
 import { motion, AnimatePresence } from "motion/react";
-import { useTranslation } from "@/shared/i18n/TranslationContext";
+
 
 interface Ingredient {
   id: string;
@@ -21,7 +21,6 @@ export default function IngredientsPage() {
   const searchParams = useSearchParams();
   const skillId = (paramsHook['skillId'] as string) || 'cooking';
   const router = useRouter();
-  const { t } = useTranslation();
 
   const dishName = searchParams.get('dishName') || '';
   const servings = searchParams.get('servings') || '1';
@@ -97,7 +96,7 @@ export default function IngredientsPage() {
         </div>
         <div className="text-center space-y-2">
           <h2 className="text-2xl font-bold">재료 목록 분석 중...</h2>
-          <p className="text-sm text-foreground/50">'{dishName}'의 완벽한 레시피를 위해 AI가 필요한 재료를 추출하고 있습니다.</p>
+          <p className="text-sm text-foreground/50">&apos;{dishName}&apos;의 완벽한 레시피를 위해 AI가 필요한 재료를 추출하고 있습니다.</p>
         </div>
       </div>
     );
@@ -135,7 +134,7 @@ export default function IngredientsPage() {
           Ingredients
         </h1>
         <p className="text-foreground/60">
-          '{dishName}' {servings}인분에 필요한 재료입니다.<br/>
+          &apos;{dishName}&apos; {servings}인분에 필요한 재료입니다.<br/>
           없는 재료는 체크 해제하고, 냉장고에 있는 재료를 추가해보세요.
         </p>
       </div>

@@ -4,7 +4,7 @@ import { persist } from 'zustand/middleware';
 export interface HistoryRecord {
   id: string;
   scenarioKey: string;
-  parameters: Record<string, any>;
+  parameters: Record<string, unknown>;
   completedAt: string;
   isSaved: boolean;
   customName?: string;

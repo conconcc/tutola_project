@@ -4,7 +4,6 @@ import { useMemo, useEffect, useState } from "react";
 import { useParams, useRouter, useSearchParams } from "next/navigation";
 import { ChevronLeft, Play, Cpu, Loader2 } from "lucide-react";
 import { motion } from "motion/react";
-import { useTranslation } from "@/shared/i18n/TranslationContext";
 import { buildCoffeePlan } from '@/features/coffee/application/buildCoffeePlan';
 import { buildLaundryPlan } from '@/features/laundry/application/buildLaundryPlan';
 import { buildCookingPlan } from '@/features/cooking/application/buildCookingPlan';
@@ -15,7 +14,6 @@ export default function PlanPage() {
   const searchParams = useSearchParams();
   const skillId = (paramsHook['skillId'] as string) || 'coffee';
   const router = useRouter();
-  const { t } = useTranslation();
 
   const coffeeState = useMemo(() => ({
     beanAmount: Number(searchParams.get('beanWeight') ?? 20),
@@ -49,7 +47,17 @@ export default function PlanPage() {
   useEffect(() => {
     const fetchPlan = async () => {
       try {
-        let bodyPayload: any = { skillId };
+        type PlanBody = {
+          skillId: string;
+          beanAmount?: number; waterAmount?: number; dripperType?: string;
+          kettleAvailable?: boolean; flavorPreference?: string; coffeeBean?: string;
+          currentStepId?: string; currentView?: string;
+          clothingItem?: string; fabricType?: string; soilLevel?: string;
+          washerType?: string; loadWeight?: string;
+          dishName?: string; servings?: string; cookingLevel?: string;
+          finalizedIngredients?: unknown[];
+        };
+        let bodyPayload: PlanBody = { skillId };
         
         if (skillId === 'coffee') {
           bodyPayload = { ...bodyPayload, ...coffeeState };

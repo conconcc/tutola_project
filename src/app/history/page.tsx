@@ -6,39 +6,47 @@ import { motion, AnimatePresence } from "motion/react";
 import { Clock, Bookmark, Play, Trash2 } from "lucide-react";
 import { useRouter } from "next/navigation";
 
+type ScenarioMeta = {
+  scenarioKey: string;
+  titleKo: string;
+  titleEn: string;
+  category: string;
+};
+
 export default function HistoryPage() {
   const { t, lang } = useTranslation();
   const router = useRouter();
   const { history, toggleSave, removeHistory } = useHistoryStore();
-  
+
   const [activeTab, setActiveTab] = useState<'RECENT' | 'SAVED'>('RECENT');
-  const [scenariosData, setScenariosData] = useState<Record<string, any>>({});
+  const [scenariosData, setScenariosData] = useState<Record<string, ScenarioMeta>>({});
   const [isClient, setIsClient] = useState(false);
 
   useEffect(() => {
-    setIsClient(true);
-    // Fetch scenario metadata to display titles
+    // Fetch scenario metadata and mark as client-mounted in one callback
     const fetchScenarios = async () => {
       try {
         const res = await fetch('/api/scenarios');
         const data = await res.json();
         if (data.results) {
-          const map: Record<string, any> = {};
-          data.results.forEach((s: any) => { map[s.scenarioKey] = s; });
+          const map: Record<string, ScenarioMeta> = {};
+          (data.results as ScenarioMeta[]).forEach((s) => { map[s.scenarioKey] = s; });
           setScenariosData(map);
         }
       } catch (e) {
         console.error("Failed to load scenarios", e);
+      } finally {
+        setIsClient(true);
       }
     };
-    fetchScenarios();
+    void fetchScenarios();
   }, []);
 
   const displayList = useMemo(() => {
     return history.filter(record => activeTab === 'RECENT' ? true : record.isSaved);
   }, [history, activeTab]);
 
-  if (!isClient) return null; // Wait for hydration Since Zustand persist runs on client
+  if (!isClient) return null; // Zustand persist는 클라이언트에서만 동작하므로 hydration 대기
 
   return (
     <div className="min-h-screen bg-[#F5F2F0] pb-32">

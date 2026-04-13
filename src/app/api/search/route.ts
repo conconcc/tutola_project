@@ -1,7 +1,5 @@
-import { PrismaClient } from '@prisma/client';
 import { NextRequest, NextResponse } from 'next/server';
-
-const prisma = new PrismaClient();
+import { prisma } from '@/server/db/prismaClient';
 
 const FALLBACK_SCENARIOS = [
   { id: '1', scenarioKey: 'coffee', titleKo: '나만의 아침 커피', titleEn: 'My Morning Coffee', category: 'COFFEE', keywords: '커피, 핸드드립, 원두, 모닝커피, v60' },
