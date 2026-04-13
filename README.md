@@ -1,7 +1,7 @@
 # TUTOLA
 
 **Multi-Scenario Adaptive Skill Coaching Platform**
-생활·취미 실습 시나리오를 기반으로 한 AI 코치형 교육 서비스
+생활·취미 강습 실습 시나리오를 기반으로 한 AI 코치형 교육 서비스
 
 > 🎓 차세대 교육 서비스 솔루션 콘테스트 출품작
 
