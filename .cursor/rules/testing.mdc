@@ -1,0 +1,170 @@
+---
+description: TUTOLA 테스트 규칙 — 단위 테스트 대상, 컴포넌트 테스트, Antigravity 브라우저 검증 기준
+globs: ["src/**/*.test.ts", "src/**/*.test.tsx", "src/**/*.spec.ts"]
+alwaysApply: false
+---
+
+# Testing Rules
+
+## Test Runner
+
+Vitest (preferred for Next.js App Router compatibility):
+```bash
+npm install -D vitest @testing-library/react @testing-library/user-event jsdom
+```
+
+`vite.config.ts` or `vitest.config.ts`:
+```typescript
+export default defineConfig({
+  test: {
+    environment: 'jsdom',
+    globals: true,
+    setupFiles: './src/test/setup.ts',
+  },
+});
+```
+
+## Unit Test — Required Targets
+
+These functions MUST have unit tests:
+
+| Module | Function | Priority |
+|--------|----------|----------|
+| `features/coffee/application/buildCoffeePlan.ts` | `buildCoffeePlan` | P0 |
+| `features/laundry/application/buildLaundryPlan.ts` | `buildLaundryPlan` | P0 |
+| `features/laundry/application/laundryWarnings.ts` | `generateWarnings` | P0 |
+| `features/cooking/application/adjustServings.ts` | `adjustServings` | P0 |
+| `features/cooking/application/substituteIngredient.ts` | `substituteIngredient` | P0 |
+| `features/scenario-engine/application/stepDrillDown.ts` | `drillDownStep` | P1 |
+| `server/services/commandInterpreter.ts` | `interpretCommand` | P1 |
+| `server/validators/commandSchema.ts` | schema validation | P1 |
+
+## Unit Test Structure
+
+```typescript
+// File: buildCoffeePlan.test.ts
+import { describe, it, expect } from 'vitest';
+import { buildCoffeePlan } from './buildCoffeePlan';
+import { mockCoffeeState } from '../data/mockCoffeeState';
+
+describe('buildCoffeePlan', () => {
+  it('generates correct number of steps for standard brew', () => {
+    const plan = buildCoffeePlan(mockCoffeeState);
+    expect(plan).toHaveLength(5);
+  });
+
+  it('includes kettle substitution step when kettleAvailable is false', () => {
+    const state = { ...mockCoffeeState, kettleAvailable: false };
+    const plan = buildCoffeePlan(state);
+    expect(plan.some(s => s.id === 'kettle-substitute')).toBe(true);
+  });
+
+  it('adjusts step descriptions for strong flavor preference', () => {
+    const state = { ...mockCoffeeState, flavorPreference: 'strong' };
+    const plan = buildCoffeePlan(state);
+    // assert flavor-specific step exists
+  });
+});
+```
+
+## Test Principles
+
+- Test **behavior**, not implementation details
+- One `describe` block per function/module
+- Each `it` tests one specific behavior
+- Use `mockData` factories — never hardcode values inline
+- No side effects between tests (`beforeEach` cleanup if needed)
+- Pure functions → no mocking needed
+- Avoid React Testing Library for pure function tests
+
+## Component Tests
+
+Test only when component has meaningful interaction logic:
+
+```typescript
+// StepCard.test.tsx
+import { render, screen } from '@testing-library/react';
+import userEvent from '@testing-library/user-event';
+import { StepCard } from './StepCard';
+import { mockStep } from '../data/mockStep';
+
+describe('StepCard', () => {
+  it('calls onDrillDown when drill-down button is clicked', async () => {
+    const handleDrillDown = vi.fn();
+    render(<StepCard step={mockStep} isActive onDrillDown={handleDrillDown} />);
+    
+    await userEvent.click(screen.getByRole('button', { name: /더 자세히/i }));
+    expect(handleDrillDown).toHaveBeenCalledWith(mockStep.id);
+  });
+});
+```
+
+## Mock Data Convention
+
+Create mock factories in `*/data/` directories:
+
+```typescript
+// features/coffee/data/mockCoffeeState.ts
+import { CoffeeState } from '../domain/types';
+
+export const mockCoffeeState: CoffeeState = {
+  beanAmount: 15,
+  waterAmount: 250,
+  dripperType: 'v60',
+  kettleAvailable: true,
+  flavorPreference: 'balanced',
+  currentStepId: 'step-1',
+  currentView: 'front',
+};
+```
+
+## Coverage Targets
+
+| Area | Target |
+|------|--------|
+| Application layer (plan builders, calculators) | 80%+ |
+| Domain utilities (warnings, substitutions) | 80%+ |
+| Command interpreter | 70%+ |
+| UI components | Key interactions only |
+
+## Antigravity Browser Verification (Separate from Unit Tests)
+
+Antigravity performs browser-based verification after each Phase:
+
+**Phase 3 (Coffee):**
+- [ ] `/coffee` renders without error
+- [ ] Plan generates on form submit
+- [ ] Camera preset changes (front → top → side) work
+- [ ] Step drill-down opens substeps
+
+**Phase 4 (Laundry):**
+- [ ] `/laundry` renders without error
+- [ ] Plan updates on condition change
+- [ ] Color mix warning appears (e.g., black + white)
+
+**Phase 5 (Cooking):**
+- [ ] `/cooking` renders without error
+- [ ] Serving adjustment recalculates ingredients
+- [ ] Ingredient substitution reflects in plan
+
+**Phase 6 (Final):**
+- [ ] Full scenario selection flow
+- [ ] Natural language command changes state
+- [ ] No TypeScript errors (`npx tsc --noEmit`)
+- [ ] No ESLint violations
+
+## Run Commands
+
+```bash
+# Unit tests
+npx vitest run
+
+# Watch mode
+npx vitest
+
+# Type check
+npx tsc --noEmit
+
+# Lint
+npx eslint src/ --ext .ts,.tsx
+```

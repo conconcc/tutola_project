@@ -1,0 +1,144 @@
+---
+description: TUTOLA TypeScript 엄격 모드 규칙 — any 금지, Zod 검증, 타입 설계 원칙
+globs: ["src/**/*.ts", "src/**/*.tsx"]
+alwaysApply: true
+---
+
+# TypeScript Rules
+
+## Compiler Requirements
+
+`tsconfig.json` must include:
+```json
+{
+  "compilerOptions": {
+    "strict": true,
+    "noImplicitAny": true,
+    "noUncheckedIndexedAccess": true,
+    "exactOptionalPropertyTypes": true
+  }
+}
+```
+
+## Absolute Prohibitions
+
+```typescript
+// ❌ any — always forbidden
+const data: any = response;
+function process(input: any) {}
+
+// ❌ Type assertion without validation
+const user = response as User;
+
+// ❌ Non-null assertion on unknown values
+const value = obj!.property;
+
+// ❌ @ts-ignore without explanation
+// @ts-ignore
+```
+
+## Type Safety Patterns
+
+```typescript
+// ✅ Use unknown + type guard for external input
+function isCommand(value: unknown): value is Command {
+  return commandSchema.safeParse(value).success;
+}
+
+// ✅ Discriminated unions for variant types
+type ScenarioState =
+  | { scenarioType: 'coffee'; state: CoffeeState }
+  | { scenarioType: 'laundry'; state: LaundryState }
+  | { scenarioType: 'cooking'; state: CookingState };
+
+// ✅ Zod for all external input
+const result = commandSchema.safeParse(rawInput);
+if (!result.success) {
+  return handleParseError(result.error);
+}
+const command = result.data; // fully typed
+```
+
+## Zod Validation (Required)
+
+All external inputs MUST be validated with Zod:
+- Form input → `formSchema.parse()`
+- API request body → `requestSchema.safeParse()`
+- AI/LLM response → `aiResponseSchema.safeParse()` with fallback
+- URL params / search params → `paramsSchema.safeParse()`
+
+```typescript
+// ✅ Pattern: schema → type derivation
+import { z } from 'zod';
+
+const commandSchema = z.object({
+  scenarioType: z.enum(['coffee', 'laundry', 'cooking']),
+  intent: commandIntentSchema,
+  target: z.string().min(1),
+  params: z.record(z.unknown()),
+  stepAction: z.enum(['none', 'recalculate', 'drill_down', 'navigate']),
+  message: z.string(),
+});
+
+export type Command = z.infer<typeof commandSchema>;
+```
+
+## Type vs Interface
+
+| Use | Keyword |
+|-----|---------|
+| Domain models, DTOs | `interface` |
+| Union types, aliases, computed types | `type` |
+| Zod-inferred types | `type` (via `z.infer<>`) |
+
+## Naming Rules
+
+```typescript
+// Boolean: is/has/can/should prefix
+const isStepComplete: boolean;
+const hasSubsteps: boolean;
+const canDrillDown: boolean;
+
+// Pure transformer functions
+function buildCoffeePlan(state: CoffeeState): Step[] {}
+function toCommand(intent: CommandIntent, params: Params): Command {}
+function mapStepToUI(step: Step): StepCardProps {}
+
+// Validators
+function validateServings(value: unknown): ParsedNumber {}
+```
+
+## Error Handling
+
+```typescript
+// ✅ Result pattern for operations that can fail
+type Result<T, E = AppError> =
+  | { success: true; data: T }
+  | { success: false; error: E };
+
+// ✅ Typed errors
+class PlanCalculationError extends Error {
+  readonly code: 'INVALID_INPUT' | 'MISSING_RESOURCE';
+  constructor(code: PlanCalculationError['code'], message: string) {
+    super(message);
+    this.code = code;
+  }
+}
+```
+
+## Magic Values (Forbidden)
+
+```typescript
+// ❌ Magic strings / numbers
+if (loadSize === 'large') {}
+const MAX = 5;
+
+// ✅ Named constants
+import { LOAD_SIZE, MAX_SERVINGS } from '@/shared/constants/scenarios';
+if (loadSize === LOAD_SIZE.LARGE) {}
+```
+
+## Generics
+
+- Use descriptive names: `TState`, `TResources`, `TResult`
+- Avoid unnecessary generics — only generalize when used 2+ times

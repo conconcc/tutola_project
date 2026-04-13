@@ -1,0 +1,169 @@
+---
+description: TUTOLA UI 컴포넌트 규칙 — 클라이언트/서버 분리, 컴포넌트 크기 제한, 3D 규칙
+globs: ["src/**/*.tsx", "src/shared/components/**", "src/features/**/ui/**"]
+alwaysApply: false
+---
+
+# UI Rules
+
+## Component Responsibility
+
+- One component = one visual/interaction concern
+- Max ~150 lines per component file (split if larger)
+- No business logic inside components — call application layer functions
+- No domain model mutation inside components — use Zustand actions
+- Props shape must be explicitly typed (never use `any`)
+
+## Server vs Client Components
+
+```typescript
+// ✅ Default: Server Component (no directive needed)
+// Use for: layouts, static content, data fetching shells
+
+// ✅ Client Component: add directive explicitly
+'use client';
+// Use for: useState, useEffect, event handlers, browser APIs, Zustand
+
+// 📌 Check before adding 'use client':
+// Can this be split so only the interactive part is client?
+```
+
+## Tailwind CSS Rules
+
+```typescript
+// ✅ Use Tailwind utilities
+<div className="flex items-center gap-4 rounded-xl bg-zinc-900 p-6">
+
+// ✅ Complex class combinations → use cn() helper
+import { cn } from '@/shared/lib/cn';
+<div className={cn('base-class', isActive && 'active-class', className)}>
+
+// ❌ Inline styles (only exception: dynamic values not possible in Tailwind)
+<div style={{ color: 'red' }}>
+
+// ❌ CSS modules, styled-components (not in this project)
+```
+
+## Component File Structure
+
+```typescript
+// 1. Imports (external → internal → types)
+// 2. Types / Props interface
+// 3. Constants (messages, config values for this component)
+// 4. Sub-components (if small and colocated)
+// 5. Main component (named export)
+
+export interface StepCardProps {
+  step: Step;
+  isActive: boolean;
+  onDrillDown: (stepId: string) => void;
+}
+
+// Group UI strings for future i18n migration
+const messages = {
+  drillDownLabel: '더 자세히',
+  backLabel: '이전 단계',
+} as const;
+
+export function StepCard({ step, isActive, onDrillDown }: StepCardProps) {
+  // ...
+}
+```
+
+## Event Handlers
+
+```typescript
+// ✅ Named handlers with 'handle' prefix
+function handleStepSelect(stepId: string) {
+  onDrillDown(stepId);
+}
+
+// ❌ Anonymous inline handlers with business logic
+<button onClick={() => { setState(...); recalculate(...); }}>
+```
+
+## 3D Components (React Three Fiber) — 확정 패턴
+
+> ⚠️ R3F는 반드시 아래 패턴만 사용한다. `'use client'`만으로는 SSR 충돌이 발생한다.
+
+```typescript
+// ✅ Step 1: 사용하는 쪽 (page.tsx 또는 상위 Client Component)
+// → dynamic + ssr: false 로 import
+import dynamic from 'next/dynamic';
+
+const CoffeeViewer = dynamic(
+  () => import('@/features/coffee/ui/CoffeeViewer').then(m => m.CoffeeViewer),
+  {
+    ssr: false,                                    // 서버 실행 완전 차단
+    loading: () => <CoffeeViewerSkeleton />,       // 로딩 fallback 필수
+  }
+);
+
+// ✅ Step 2: CoffeeViewer 파일 자체에는 'use client' 유지
+// src/features/coffee/ui/CoffeeViewer/index.tsx
+'use client';
+import { Canvas } from '@react-three/fiber';
+import { OrbitControls, useGLTF } from '@react-three/drei';
+
+// ✅ Step 3: Camera presets는 as const 타입으로
+// src/features/coffee/ui/CoffeeViewer/cameraPresets.ts
+export const CAMERA_PRESETS = {
+  front: { position: [0, 1, 3] as [number, number, number], target: [0, 0, 0] as [number, number, number] },
+  top:   { position: [0, 4, 0] as [number, number, number], target: [0, 0, 0] as [number, number, number] },
+  side:  { position: [3, 1, 0] as [number, number, number], target: [0, 0, 0] as [number, number, number] },
+  zoom:  { position: [0, 0.5, 1.5] as [number, number, number], target: [0, 0, 0] as [number, number, number] },
+} as const;
+
+export type CameraPreset = keyof typeof CAMERA_PRESETS;
+
+// ✅ Step 4: GLTF 모델 (준비 전 placeholder, 준비 후 교체)
+// 개발 초기 placeholder:
+export function DripperModel() {
+  return (
+    <mesh position={[0, 0, 0]}>
+      <cylinderGeometry args={[0.3, 0.5, 0.8, 32]} />
+      <meshStandardMaterial color="#c8a882" />
+    </mesh>
+  );
+}
+
+// 모델 준비 후 교체:
+// export function DripperModel() {
+//   const { scene } = useGLTF('/models/coffee/dripper.glb');
+//   return <primitive object={scene} />;
+// }
+// useGLTF.preload('/models/coffee/dripper.glb');
+```
+
+## Shared Components
+
+Place in `shared/components/` only when used across 2+ features:
+- `StepCard/` — universal step display
+- `WarningBadge/` — warning display
+- `QuickActionBar/` — quick action buttons
+- `CoachMessage/` — coach-style message bubble
+
+Feature-specific components stay inside `features/*/ui/`.
+
+## Forbidden UI Patterns
+
+```typescript
+// ❌ useEffect for data derivation → use useMemo
+useEffect(() => {
+  setComputedValue(expensiveCalc(data));
+}, [data]);
+
+// ✅ 
+const computedValue = useMemo(() => expensiveCalc(data), [data]);
+
+// ❌ Giant components (>200 lines with business logic)
+// ❌ Props drilling more than 2 levels → use Zustand or composition
+// ❌ Direct Zustand store mutation in JSX event handlers — use action functions
+```
+
+## Accessibility Basics
+
+- Interactive elements must have accessible labels
+- Use semantic HTML (`<button>`, `<nav>`, `<main>`, `<section>`)
+- Focus management for step navigation
+- Color contrast ratio minimum 4.5:1

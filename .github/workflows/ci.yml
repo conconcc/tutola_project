@@ -1,0 +1,39 @@
+name: CI
+
+on:
+  push:
+    branches: [main, develop]
+  pull_request:
+    branches: [main]
+
+jobs:
+  quality-gate:
+    runs-on: ubuntu-latest
+
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Setup Node.js
+        uses: actions/setup-node@v4
+        with:
+          node-version: '20'
+          cache: 'npm'
+
+      - name: Install dependencies
+        run: npm ci
+
+      - name: Gate 1 — TypeScript strict check
+        run: npx tsc --noEmit
+
+      - name: Gate 2 — ESLint
+        run: npx eslint src/ --ext .ts,.tsx --max-warnings 0
+
+      - name: Gate 3 — Unit tests
+        run: npx vitest run
+
+      - name: Gate 5 — Production build
+        run: npm run build
+        env:
+          AI_PROVIDER_API_KEY: ${{ secrets.AI_PROVIDER_API_KEY }}
+          AI_MODEL_NAME: ${{ secrets.AI_MODEL_NAME }}

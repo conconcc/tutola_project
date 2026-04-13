@@ -1,0 +1,150 @@
+generator client {
+  provider = "prisma-client-js"
+}
+
+datasource db {
+  provider  = "postgresql"
+  url       = env("DATABASE_URL")
+  directUrl = env("DIRECT_URL")
+}
+
+/// This table contains check constraints and requires additional setup for migrations. Visit https://pris.ly/d/check-constraints for more info.
+model assessment_records {
+  id              String            @id @default(dbgenerated("gen_random_uuid()")) @db.Uuid
+  learner_id      String            @db.Uuid
+  module_id       String            @db.Uuid
+  cohort_id       String            @db.Uuid
+  completed_at    DateTime          @default(now()) @db.Timestamptz(6)
+  progress_events Json              @default("[]")
+  score           Int?
+  instructor_note String?
+  passed          Boolean           @default(false)
+  created_at      DateTime          @default(now()) @db.Timestamptz(6)
+  updated_at      DateTime          @default(now()) @db.Timestamptz(6)
+  cohorts         cohorts           @relation(fields: [cohort_id], references: [id], onDelete: Cascade, onUpdate: NoAction)
+  modules         modules           @relation(fields: [module_id], references: [id], onDelete: Cascade, onUpdate: NoAction)
+  progress_events_list progress_events[]
+
+  @@unique([learner_id, module_id, cohort_id], map: "assessment_records_uniq")
+  @@index([cohort_id])
+  @@index([learner_id])
+  @@index([module_id])
+}
+
+/// This table contains check constraints and requires additional setup for migrations. Visit https://pris.ly/d/check-constraints for more info.
+model cohorts {
+  id                 String               @id @default(dbgenerated("gen_random_uuid()")) @db.Uuid
+  course_id          String               @db.Uuid
+  name               String
+  start_date         DateTime             @db.Timestamptz(6)
+  end_date           DateTime             @db.Timestamptz(6)
+  instructor_id      String               @db.Uuid
+  learner_ids        String[]             @default([]) @db.Uuid
+  status             String
+  created_at         DateTime             @default(now()) @db.Timestamptz(6)
+  updated_at         DateTime             @default(now()) @db.Timestamptz(6)
+  assessment_records assessment_records[]
+  courses            courses              @relation(fields: [course_id], references: [id], onDelete: Cascade, onUpdate: NoAction)
+
+  @@index([course_id])
+  @@index([status])
+}
+
+/// This table contains check constraints and requires additional setup for migrations. Visit https://pris.ly/d/check-constraints for more info.
+model courses {
+  id              String    @id @default(dbgenerated("gen_random_uuid()")) @db.Uuid
+  title           String
+  description     String
+  scenario_types  String[]
+  target_audience String
+  estimated_hours Int
+  is_published    Boolean   @default(false)
+  created_at      DateTime  @default(now()) @db.Timestamptz(6)
+  updated_at      DateTime  @default(now()) @db.Timestamptz(6)
+  cohorts         cohorts[]
+  modules         modules[]
+}
+
+model modules {
+  id                  String               @id @default(dbgenerated("gen_random_uuid()")) @db.Uuid
+  course_id           String               @db.Uuid
+  title               String
+  scenario_type       String
+  scenario_id         String
+  order               Int
+  objectives          String[]
+  assessment_criteria Json                 @default("[]")
+  created_at          DateTime             @default(now()) @db.Timestamptz(6)
+  updated_at          DateTime             @default(now()) @db.Timestamptz(6)
+  assessment_records  assessment_records[]
+  courses             courses              @relation(fields: [course_id], references: [id], onDelete: Cascade, onUpdate: NoAction)
+
+  @@unique([course_id, order], map: "modules_course_order_uniq")
+  @@index([course_id])
+  @@index([scenario_type])
+}
+
+/// This table contains check constraints and requires additional setup for migrations. Visit https://pris.ly/d/check-constraints for more info.
+model progress_events {
+  id                   String             @id @default(dbgenerated("gen_random_uuid()")) @db.Uuid
+  assessment_record_id String             @db.Uuid
+  timestamp            DateTime           @db.Timestamptz(6)
+  scenario_type        String
+  step_id              String
+  event_type           String
+  metadata             Json               @default("{}")
+  assessment_records   assessment_records @relation(fields: [assessment_record_id], references: [id], onDelete: Cascade, onUpdate: NoAction)
+
+  @@index([assessment_record_id])
+  @@index([step_id])
+  @@index([timestamp])
+}
+
+model Session {
+  id         String   @id @default(uuid())
+  createdAt  DateTime @default(now())
+  expiresAt  DateTime
+  createdBy  String?
+  userAgent  String?
+  ipAddress  String?
+
+  @@index([expiresAt])
+}
+
+model SecurityEvent {
+  id         String   @id @default(uuid())
+  requestId  String
+  event      String
+  statusCode Int
+  detail     String?
+  createdAt  DateTime @default(now())
+
+  @@index([requestId])
+  @@index([createdAt])
+}
+
+model InterpretRequestLog {
+  id               String   @id @default(uuid())
+  requestId        String
+  scenarioType     String
+  naturalLanguage  String
+  commandIntent    String?
+  success          Boolean
+  errorCode        String?
+  createdAt        DateTime @default(now())
+
+  @@index([requestId])
+  @@index([scenarioType, createdAt])
+}
+
+model PracticeScenario {
+  id          String   @id @default(uuid())
+  scenarioKey String   @unique // e.g. "coffee", "laundry", "cooking"
+  titleKo     String
+  titleEn     String
+  category    String
+  keywords    String   // Comma separated keywords for search
+  createdAt   DateTime @default(now())
+
+  @@index([scenarioKey])
+}

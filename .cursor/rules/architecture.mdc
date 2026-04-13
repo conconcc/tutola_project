@@ -1,0 +1,95 @@
+---
+description: TUTOLA 프로젝트 아키텍처 원칙 — 폴더 구조, 레이어 분리, 모듈 경계
+globs: ["src/**/*.ts", "src/**/*.tsx"]
+alwaysApply: true
+---
+
+# Architecture Rules
+
+## Folder Structure (Enforced)
+
+```
+src/
+  app/               ← Route entry only. No business logic.
+  features/
+    scenario-engine/ ← Shared scenario domain + application layer
+    coffee/
+    laundry/
+    cooking/
+  shared/            ← Cross-feature reusable code
+  server/            ← Server-side only (services, validators, AI adapter)
+```
+
+## Layer Responsibilities
+
+| Layer | Allowed | Forbidden |
+|-------|---------|-----------|
+| `app/` | Route, layout, page composition | Business logic, direct DB/API calls |
+| `features/*/domain/` | Types, constants, pure domain functions | UI imports, server imports |
+| `features/*/application/` | Plan builders, command handlers, pure logic | UI state, React hooks |
+| `features/*/ui/` | React components, hooks | Direct domain mutation, server calls |
+| `server/` | Services, validators, AI adapter | React, client state |
+| `shared/` | Generic components, utils, hooks | Feature-specific logic |
+
+## Module Boundary Rules
+
+- `features/coffee` must NOT import from `features/laundry` or `features/cooking`
+- `features/*/domain` must NOT import from `features/*/ui`
+- `server/` must NOT import from `features/*/ui`
+- `app/` must NOT contain business logic — delegate to features or server
+- `shared/` must NOT import from `features/`
+
+## Scenario Engine Interface (Required)
+
+Every scenario MUST implement `BaseScenario<TState, TResources>`:
+
+```typescript
+interface BaseScenario<TState, TResources> {
+  id: string;
+  scenarioType: ScenarioType;
+  title: string;
+  resources: TResources;
+  currentState: TState;
+  plan: Step[];
+  warnings: Warning[];
+  substitutions: Substitution[];
+}
+```
+
+## Server / Client Boundary
+
+- Default to React Server Components
+- Add `'use client'` only when interactivity or browser APIs are needed
+- 3D components (React Three Fiber) MUST use `'use client'` + `dynamic({ ssr: false })`
+- Never import server-only modules (`server/`, `fs`, `crypto`) in client components
+
+## AI Adapter Pattern
+
+```
+UI → Zustand Action → Server Action / API Route → AIAdapter → LLM Provider
+                                                ↘ Zod Validate ↙
+                                                  Typed Command
+                                                       ↓
+                                              Fallback if invalid
+```
+
+- AI calls are isolated in `src/server/services/aiAdapter.ts`
+- All AI output is validated with Zod before use in application logic
+- Deterministic fallback must always exist
+
+## Named Exports Only
+
+```typescript
+// ✅ Good
+export function buildCoffeePlan(...) {}
+export type { CoffeeState };
+
+// ❌ Bad
+export default function buildCoffeePlan(...) {}
+```
+
+## One Responsibility Per File
+
+- One file = one primary concern
+- Colocate types with their usage if they are not shared
+- Move to `shared/types/` only if used across 2+ features
