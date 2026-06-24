@@ -7,6 +7,8 @@ import { motion, AnimatePresence } from 'motion/react';
 
 import { useTranslation } from '@/shared/i18n/TranslationContext';
 import { CoffeeViewer } from '@/features/coffee/ui/CoffeeViewer';
+import { LaundryViewer } from '@/features/laundry/ui/LaundryViewer';
+import { CookingViewer } from '@/features/cooking/ui/CookingViewer';
 import { Placeholder3D } from '@/shared/ui/Placeholder3D';
 import { buildCoffeePlan } from '@/features/coffee/application/buildCoffeePlan';
 import { buildLaundryPlan } from '@/features/laundry/application/buildLaundryPlan';
@@ -227,7 +229,15 @@ export default function PracticeView() {
       <div className="flex-1 w-full relative z-0 bg-[#F5F2F0]">
         {skillId === 'coffee' ? (
           <div className="w-full h-full">
-            <CoffeeViewer currentView={currentView} />
+            <CoffeeViewer currentView={currentView} stepId={currentStep?.id} />
+          </div>
+        ) : skillId === 'laundry' ? (
+          <div className="w-full h-full">
+            <LaundryViewer currentView={currentView} stepId={currentStep?.id} />
+          </div>
+        ) : skillId === 'cooking' ? (
+          <div className="w-full h-full">
+            <CookingViewer currentView={currentView} stepId={currentStep?.id} />
           </div>
         ) : (
           <Placeholder3D skillId={skillId} />
@@ -277,24 +287,20 @@ export default function PracticeView() {
 
         <div className="absolute bottom-8 left-6 right-6 z-20 pointer-events-none flex items-end justify-between">
           <div className="pointer-events-auto group relative">
-            {skillId === 'coffee' ? (
-              <>
-                <button className="w-14 h-14 bg-white/90 backdrop-blur-md rounded-full shadow-xl border border-border/20 flex items-center justify-center text-foreground/60">
-                  <Settings2 size={24} />
+            <button className="w-14 h-14 bg-white/90 backdrop-blur-md rounded-full shadow-xl border border-border/20 flex items-center justify-center text-foreground/60">
+              <Settings2 size={24} />
+            </button>
+            <div className="absolute bottom-16 left-0 opacity-0 group-hover:opacity-100 pointer-events-none group-hover:pointer-events-auto translate-y-4 group-hover:translate-y-0 transition-all flex flex-col gap-2">
+              {VIEW_BUTTONS.map(({ view, label }) => (
+                <button
+                  key={view}
+                  onClick={() => setCurrentView(view)}
+                  className={`px-6 py-3 rounded-full text-sm font-bold shadow-md whitespace-nowrap ${currentView === view ? 'bg-brand text-white' : 'bg-white text-foreground/70 border border-border/20'}`}
+                >
+                  {label}
                 </button>
-                <div className="absolute bottom-16 left-0 opacity-0 group-hover:opacity-100 pointer-events-none group-hover:pointer-events-auto translate-y-4 group-hover:translate-y-0 transition-all flex flex-col gap-2">
-                  {VIEW_BUTTONS.map(({ view, label }) => (
-                    <button
-                      key={view}
-                      onClick={() => setCurrentView(view)}
-                      className={`px-6 py-3 rounded-full text-sm font-bold shadow-md whitespace-nowrap ${currentView === view ? 'bg-brand text-white' : 'bg-white text-foreground/70 border border-border/20'}`}
-                    >
-                      {label}
-                    </button>
-                  ))}
-                </div>
-              </>
-            ) : null}
+              ))}
+            </div>
           </div>
 
           {!isComplete ? (

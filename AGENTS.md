@@ -13,7 +13,7 @@ Cursor handles structure and logic. Antigravity handles mission-based implementa
 ## Project Location
 
 ```
-c:\Users\lesj2\prac\project\tutola\
+<local repo path — do NOT include user-specific home directories>
 ```
 
 Dev server runs at: `http://localhost:3000`
@@ -163,7 +163,7 @@ src/
 ## Key Artifacts Directory
 
 ```
-C:\Users\lesj2\.gemini\antigravity\brain\cc90cb15-18e5-4125-a6f8-4a67489244d0\
+~/.gemini/antigravity/brain/<id>/
   implementation_plan.md
   task.md
   walkthrough.md
